@@ -26,11 +26,19 @@ process TO_LINEAGE {
     """
     #!/usr/bin/env bash
 
-    esearch -db protein -query "${ids.replaceAll('\n', ' ')}" \
-        | elink -target taxonomy \
-        | efetch -format xml |xtract -pattern TaxaSet -element Lineage,TaxID \
-        > lineage.tsv
-    """    
+    esearch -db protein -query "${ids.replaceAll('\n', ' ')}" | esummary \
+        | xtract -pattern DocumentSummary -element Caption,TaxId \
+        > taxids.tsv
+
+    efetch -db taxonomy -id "\$(cut -f2 taxids.tsv| tr '\\n' ' ')" -format xml \
+        | xtract -pattern Taxon -element TaxId,Lineage \
+        > lineages_no_acc.tsv
+
+    n1=\$(cat taxids.tsv | wc -l)
+    n2=\$(cat lineages_no_acc.tsv | wc -l)
+
+    [ \$n1 = \$n2 ] && paste -d '\\t' taxids.tsv lineages_no_acc.tsv | cut -f2 --complement > lineage.tsv || exit 1
+    """
 }
 
 workflow genbank {
@@ -40,7 +48,7 @@ workflow genbank {
 
 workflow lineage {
     ids_split = Channel.fromPath(params.accessions).splitText( by: params.chunks )
-    ids_split | TO_LINEAGE | collectFile(name: "lineages.tv", storeDir: params.outdir)
+    ids_split | TO_LINEAGE | collectFile(name: "lineages.tsv", storeDir: params.outdir)
 }
 
 workflow {
